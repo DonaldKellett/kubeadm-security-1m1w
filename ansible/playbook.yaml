@@ -1,0 +1,87 @@
+---
+- name: Prepare all master and worker nodes
+  hosts: masters:workers
+  tasks:
+    - name: Disable swap
+      ansible.builtin.shell: |
+        sudo swapoff -a
+        sudo sed -i '/\/swap\.img/d' /etc/fstab
+        sudo systemctl daemon-reload
+        sudo mount -a
+    - name: Configure max open files
+      ansible.builtin.shell: |
+        cat << EOF | sudo tee -a /etc/security/limits.conf
+        *    soft    nofile    1048576
+        *    hard    nofile    1048576
+        EOF
+    - name: Load kernel modules
+      ansible.builtin.shell: |
+        cat << EOF | sudo tee /etc/modules-load.d/99-kubernetes-networking.conf
+        br_netfilter
+        overlay
+        EOF
+        sudo modprobe br_netfilter
+        sudo modprobe overlay
+    - name: Tune kernel parameters
+      ansible.builtin.shell: |
+        cat << EOF | sudo tee /etc/sysctl.d/99-kubernetes-cri.conf
+        net.ipv4.ip_forward=1
+        net.bridge.bridge-nf-call-iptables=1
+        net.bridge.bridge-nf-call-ip6tables=1
+        fs.inotify.max_user_instances=1048576
+        fs.inotify.max_user_watches=1048576
+        EOF
+        sudo sysctl --system
+    - name: Install runc v1.2.6
+      ansible.builtin.shell: |
+        TMP_DIR=$(mktemp -d)
+        pushd $TMP_DIR
+        wget https://github.com/opencontainers/runc/releases/download/v1.2.6/runc.amd64
+        chmod +x runc.amd64
+        sudo mv runc.amd64 /usr/local/bin/runc
+        popd
+        rm -rf $TMP_DIR
+    - name: Install containernetworking/plugins v1.6.2
+      ansible.builtin.shell: |
+        TMP_DIR=$(mktemp -d)
+        pushd $TMP_DIR
+        wget https://github.com/containernetworking/plugins/releases/download/v1.6.2/cni-plugins-linux-amd64-v1.6.2.tgz
+        sudo tar -xvf cni-plugins-linux-amd64-v1.6.2.tgz \
+            -C /usr/local/bin/ \
+            --exclude='LICENSE' \
+            --exclude='README.md'
+        popd
+        rm -rf $TMP_DIR
+    - name: Install, configure and start containerd 2.0.4
+      ansible.builtin.shell: |
+        TMP_DIR=$(mktemp -d)
+        pushd $TMP_DIR
+        wget https://github.com/containerd/containerd/releases/download/v2.0.4/containerd-2.0.4-linux-amd64.tar.gz
+        tar xvf containerd-2.0.4-linux-amd64.tar.gz
+        sudo cp -r bin/. /usr/local/bin/.
+        popd
+        rm -rf $TMP_DIR
+        sudo wget -qO /etc/systemd/system/containerd.service \
+            https://raw.githubusercontent.com/containerd/containerd/refs/tags/v2.0.4/containerd.service
+        sudo mkdir -p /etc/containerd/
+        containerd config default | sudo tee /etc/containerd/config.toml
+        sudo systemctl daemon-reload
+        sudo systemctl enable --now containerd.service
+    - name: Install gVisor and configure runsc runtime for containerd
+      ansible.builtin.shell: |
+        sudo apt-get update && \
+        sudo apt-get install -y \
+            apt-transport-https \
+            ca-certificates \
+            curl \
+            gnupg
+        curl -fsSL https://gvisor.dev/archive.key | \
+            sudo gpg --dearmor -o /usr/share/keyrings/gvisor-archive-keyring.gpg
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases release main" | \
+            sudo tee /etc/apt/sources.list.d/gvisor.list > /dev/null
+        sudo apt-get update && sudo apt-get install -y runsc
+        cat << EOF | sudo tee -a /etc/containerd/config.toml
+        [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runsc]
+          runtime_type = 'io.containerd.runsc.v1'
+        EOF
+        sudo systemctl restart containerd.service
