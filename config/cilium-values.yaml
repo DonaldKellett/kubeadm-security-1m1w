@@ -1,3 +1,7 @@
+encryption:
+  enabled: true
+  nodeEncryption: true
+  type: wireguard
 gatewayAPI:
   enabled: true
 hubble:

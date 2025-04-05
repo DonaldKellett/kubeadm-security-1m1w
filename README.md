@@ -94,7 +94,7 @@ The following variables can be configured when running `ansible-playbook`.
 
 | Name | Required | Default |
 | --- | --- | --- |
-| `pod_cidr` | - | `10.244.0.0/24` |
+| `pod_cidr` | - | `10.244.0.0/16` |
 | `service_cidr` | - | `10.96.0.0/16` |
 
 ```bash

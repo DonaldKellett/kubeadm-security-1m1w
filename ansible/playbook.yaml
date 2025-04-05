@@ -192,7 +192,7 @@
     - name: Generate kubeadm config from cluster and kubelet configs
       ansible.builtin.shell: |
         cat {{ temp_dir }}/cluster-config.yaml | \
-            yq '.networking |= ({"serviceSubnet":"{{ service_cidr | default('10.96.0.0/16') }}","podSubnet":"{{ pod_cidr | default('10.244.0.0/24') }}"})' >> \
+            yq '.networking |= ({"serviceSubnet":"{{ service_cidr | default('10.96.0.0/16') }}","podSubnet":"{{ pod_cidr | default('10.244.0.0/16') }}"})' >> \
             {{ temp_dir }}/kubeadm-config.yaml
         cat {{ temp_dir }}/kubelet-config.yaml >> {{ temp_dir }}/kubeadm-config.yaml
     - name: Run kubeadm init
@@ -226,8 +226,11 @@
         dest: "{{ temp_dir }}/cilium-values.yaml"
     - name: Install Cilium 1.17.2 with provided values
       ansible.builtin.shell: |
+        cat {{ temp_dir }}/cilium-values.yaml | \
+            yq '.ipam.operator.clusterPoolIPv4PodCIDRList |= "{{ pod_cidr | default('10.244.0.0/16') }}"' > \
+            {{ temp_dir }}/revised-cilium-values.yaml
         cilium install \
-            -f {{ temp_dir }}/cilium-values.yaml \
+            -f {{ temp_dir }}/revised-cilium-values.yaml \
             --version 1.17.2
     - name: Wait for Cilium to become ready
       ansible.builtin.shell: |
