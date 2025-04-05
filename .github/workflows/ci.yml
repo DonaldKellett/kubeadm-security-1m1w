@@ -17,10 +17,7 @@ jobs:
         with:
           input: all-manifests.yaml
           exit-code: "0"
-          format: template
-          template: template/sarif.tpl
-          output: kubesec-results.sarif
-      - name: Upload Kubesec scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: kubesec-results.sarif
+          format: json
+          output: kubesec-results.json
+      - name: Print Kubesec SAST results
+        run: cat kubesec-results.json
