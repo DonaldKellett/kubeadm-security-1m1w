@@ -99,6 +99,12 @@
         sudo apt-get install -y kubelet=1.32.3-1.1 kubeadm=1.32.3-1.1
         sudo apt-mark hold kubelet kubeadm
         sudo systemctl enable --now kubelet.service
+    - name: Harden the kubelet based on CIS benchmarks
+      ansible.builtin.shell: |
+        sudo cp /usr/lib/systemd/system/kubelet.service /etc/systemd/system/kubelet.service
+        sudo cp -r /usr/lib/systemd/system/kubelet.service.d /etc/systemd/system/kubelet.service.d
+        sudo chmod g-rwx,o-rwx /etc/systemd/system/kubelet.service
+        sudo chmod -R g-rwx,o-rwx /etc/systemd/system/kubelet.service.d/
 - name: Install command-line tools on master nodes
   hosts: masters
   tasks:
@@ -189,15 +195,50 @@
       ansible.builtin.copy:
         src: ../config/kubelet-config.yaml
         dest: "{{ temp_dir }}/kubelet-config.yaml"
+    - name: Copy API server audit policy to temp directory
+      ansible.builtin.copy:
+        src: ../config/audit-policy.yaml
+        dest: "{{ temp_dir }}/audit-policy.yaml"
     - name: Generate kubeadm config from cluster and kubelet configs
       ansible.builtin.shell: |
         cat {{ temp_dir }}/cluster-config.yaml | \
             yq '.networking |= ({"serviceSubnet":"{{ service_cidr | default('10.96.0.0/16') }}","podSubnet":"{{ pod_cidr | default('10.244.0.0/16') }}"})' >> \
             {{ temp_dir }}/kubeadm-config.yaml
         cat {{ temp_dir }}/kubelet-config.yaml >> {{ temp_dir }}/kubeadm-config.yaml
-    - name: Run kubeadm init
+    - name: Copy API server audit policy to /etc/kubernetes/audit-policy.yaml
       ansible.builtin.shell: |
-        sudo kubeadm init --config {{ temp_dir }}/kubeadm-config.yaml | \
+        sudo cp {{ temp_dir }}/audit-policy.yaml /etc/kubernetes/audit-policy.yaml
+    - name: Run kubeadm init phase control-plane all and perform CIS hardening on manifests
+      ansible.builtin.shell: |
+        sudo kubeadm init phase control-plane all \
+            --config {{ temp_dir }}/kubeadm-config.yaml
+        sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml | \
+            yq '(.spec.containers[] | select(.name == "kube-apiserver")).command += "--profiling=false"' | \
+            yq '(.spec.containers[] | select(.name == "kube-apiserver")).command += "--audit-policy-file=/etc/kubernetes/audit-policy.yaml"' | \
+            yq '(.spec.containers[] | select(.name == "kube-apiserver")).command += "--audit-log-path=/var/log/kubernetes/audit/audit.log"' | \
+            yq '(.spec.containers[] | select(.name == "kube-apiserver")).command += "--audit-log-maxage=30"' | \
+            yq '(.spec.containers[] | select(.name == "kube-apiserver")).command += "--audit-log-maxbackup=10"' | \
+            yq '(.spec.containers[] | select(.name == "kube-apiserver")).command += "--audit-log-maxsize=100"' | \
+            yq '(.spec.containers[] | select(.name == "kube-apiserver")).volumeMounts += ({"mountPath":"/etc/kubernetes/audit-policy.yaml","name":"audit","readOnly":true})' | \
+            yq '(.spec.containers[] | select(.name == "kube-apiserver")).volumeMounts += ({"mountPath":"/var/log/kubernetes/audit/","name":"audit-log","readOnly":false})' | \
+            yq '.spec.volumes += ({"name":"audit","hostPath":{"path":"/etc/kubernetes/audit-policy.yaml","type":"File"}})' | \
+            yq '.spec.volumes += ({"name":"audit-log","hostPath":{"path":"/var/log/kubernetes/audit/","type":"DirectoryOrCreate"}})' > \
+            {{ temp_dir }}/kube-apiserver.yaml
+        sudo cp {{ temp_dir }}/kube-apiserver.yaml /etc/kubernetes/manifests/kube-apiserver.yaml
+        sudo cat /etc/kubernetes/manifests/kube-controller-manager.yaml | \
+            yq '(.spec.containers[] | select(.name == "kube-controller-manager")).command += "--profiling=false"' > \
+            {{ temp_dir }}/kube-controller-manager.yaml
+        sudo cp {{ temp_dir }}/kube-controller-manager.yaml /etc/kubernetes/manifests/kube-controller-manager.yaml
+        sudo cat /etc/kubernetes/manifests/kube-scheduler.yaml | \
+            yq '(.spec.containers[] | select(.name == "kube-scheduler")).command += "--profiling=false"' > \
+            {{ temp_dir }}/kube-scheduler.yaml
+        sudo cp {{ temp_dir }}/kube-scheduler.yaml /etc/kubernetes/manifests/kube-scheduler.yaml
+    - name: Run kubeadm init (except phase "control-plane")
+      ansible.builtin.shell: |
+        sudo kubeadm init \
+            --skip-phases control-plane \
+            --ignore-preflight-errors=FileAvailable--etc-kubernetes-manifests-kube-apiserver.yaml,FileAvailable--etc-kubernetes-manifests-kube-controller-manager.yaml,FileAvailable--etc-kubernetes-manifests-kube-scheduler.yaml \
+            --config {{ temp_dir }}/kubeadm-config.yaml | \
             sudo tee /var/log/kubeinit.log
     - name: Configure kubectl
       ansible.builtin.shell: |
@@ -266,6 +307,20 @@
             nodes \
             --all \
             --timeout=300s
+- name: Apply additional hardening to kubelet
+  hosts: masters:workers
+  tasks:
+    - name: Make /var/lib/kubelet/config.yaml private
+      ansible.builtin.shell: |
+        sudo chmod g-rwx,o-rwx /var/lib/kubelet/config.yaml
+- name: Apply additional hardening to etcd
+  hosts: masters
+  tasks:
+    - name: Change ownership of /var/lib/etcd/ to etcd:etcd
+      ansible.builtin.shell: |
+        sudo useradd -r -s /usr/sbin/nologin etcd
+        sudo passwd -l etcd
+        sudo chown -R etcd:etcd /var/lib/etcd/
 - name: Apply cluster-wide manifests from master0
   hosts: master0
   tasks:
