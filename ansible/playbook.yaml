@@ -199,6 +199,10 @@
       ansible.builtin.copy:
         src: ../config/audit-policy.yaml
         dest: "{{ temp_dir }}/audit-policy.yaml"
+    - name: Copy at-rest encryption configuration to temp directory
+      ansible.builtin.copy:
+        src: ../config/encryption-config.yaml
+        dest: "{{ temp_dir }}/encryption-config.yaml"
     - name: Generate kubeadm config from cluster and kubelet configs
       ansible.builtin.shell: |
         cat {{ temp_dir }}/cluster-config.yaml | \
@@ -208,6 +212,12 @@
     - name: Copy API server audit policy to /etc/kubernetes/audit-policy.yaml
       ansible.builtin.shell: |
         sudo cp {{ temp_dir }}/audit-policy.yaml /etc/kubernetes/audit-policy.yaml
+    - name: Replace at-rest encryption key and copy configuration to /etc/kubernetes/enc/
+      ansible.builtin.shell: |
+        sudo mkdir -p /etc/kubernetes/enc/
+        cat {{ temp_dir }}/encryption-config.yaml | \
+            yq '(.resources[] | .providers[] | .aescbc.keys[] | select(.name == "secrets-encryption-key")).secret = "'$(head -c 32 /dev/urandom | base64 -w 0 -i -)'"' | \
+            sudo tee /etc/kubernetes/enc/encryption-config.yaml
     - name: Run kubeadm init phase control-plane all and perform CIS hardening on manifests
       ansible.builtin.shell: |
         sudo kubeadm init phase control-plane all \
@@ -219,10 +229,13 @@
             yq '(.spec.containers[] | select(.name == "kube-apiserver")).command += "--audit-log-maxage=30"' | \
             yq '(.spec.containers[] | select(.name == "kube-apiserver")).command += "--audit-log-maxbackup=10"' | \
             yq '(.spec.containers[] | select(.name == "kube-apiserver")).command += "--audit-log-maxsize=100"' | \
+            yq '(.spec.containers[] | select(.name == "kube-apiserver")).command += "--encryption-provider-config=/etc/kubernetes/enc/encryption-config.yaml"' | \
             yq '(.spec.containers[] | select(.name == "kube-apiserver")).volumeMounts += ({"mountPath":"/etc/kubernetes/audit-policy.yaml","name":"audit","readOnly":true})' | \
             yq '(.spec.containers[] | select(.name == "kube-apiserver")).volumeMounts += ({"mountPath":"/var/log/kubernetes/audit/","name":"audit-log","readOnly":false})' | \
+            yq '(.spec.containers[] | select(.name == "kube-apiserver")).volumeMounts += ({"mountPath":"/etc/kubernetes/enc/encryption-config.yaml","name":"encryption-config","readOnly":true})' | \
             yq '.spec.volumes += ({"name":"audit","hostPath":{"path":"/etc/kubernetes/audit-policy.yaml","type":"File"}})' | \
-            yq '.spec.volumes += ({"name":"audit-log","hostPath":{"path":"/var/log/kubernetes/audit/","type":"DirectoryOrCreate"}})' > \
+            yq '.spec.volumes += ({"name":"audit-log","hostPath":{"path":"/var/log/kubernetes/audit/","type":"DirectoryOrCreate"}})' | \
+            yq '.spec.volumes += ({"name":"encryption-config","hostPath":{"path":"/etc/kubernetes/enc/encryption-config.yaml","type":"File"}})' > \
             {{ temp_dir }}/kube-apiserver.yaml
         sudo cp {{ temp_dir }}/kube-apiserver.yaml /etc/kubernetes/manifests/kube-apiserver.yaml
         sudo cat /etc/kubernetes/manifests/kube-controller-manager.yaml | \
@@ -321,6 +334,16 @@
         sudo useradd -r -s /usr/sbin/nologin etcd
         sudo passwd -l etcd
         sudo chown -R etcd:etcd /var/lib/etcd/
+- name: Disable token auto-mount for default service accounts in all namespaces from master0
+  hosts: master0
+  tasks:
+    - name: Disable token auto-mount for default service accounts in all namespaces
+      ansible.builtin.shell: |
+        for ns in $(kubectl get ns --no-headers | awk '{ print $1 }'); do
+            kubectl -n $ns patch sa default \
+                --type=merge \
+                -p '{"automountServiceAccountToken":false}'
+        done
 - name: Apply cluster-wide manifests from master0
   hosts: master0
   tasks:

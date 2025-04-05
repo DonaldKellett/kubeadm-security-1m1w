@@ -13,6 +13,7 @@ If using your own infrastructure, ensure you have SSH access to 2 nodes with the
 - vCPU: at least 2
 - Memory \(GiB\): at least 8
 - Storage \(GiB\): at least 64
+- Passwordless `sudo` should be enabled
 
 ## Components
 

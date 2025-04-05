@@ -1,0 +1,26 @@
+---
+name: CI
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+jobs:
+  kubesec-sast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Combine Kubernetes manifests into a single file
+        run: cat manifests/{dns-rule-recording,gvisor-runtimeclass}.yaml > all-manifests.yaml
+      - name: Run kubesec scanner
+        uses: controlplaneio/kubesec-action@master
+        with:
+          input: all-manifests.yaml
+          exit-code: "0"
+          format: template
+          template: template/sarif.tpl
+          output: kubesec-results.sarif
+      - name: Upload Kubesec scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v1
+        with:
+          sarif_file: kubesec-results.sarif
