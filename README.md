@@ -113,7 +113,7 @@ Cilium kube-proxy replacement is enabled so this control is not applicable to ou
 
 ### 5.1.1 Ensure that the cluster-admin role is only used where required
 
-Kubeadm introduced a new group `kubeadm:cluster-admins` bound to the `cluster-admin` role and separated the revocable admin kubeconfig `/etc/kubernetes/admin.conf` from the irrevocable break-glass super-admin kubeconfig `/etc/kubernetes/super-admin.conf`. This is by design and addresses the security concern of leaking the latter to external actors.
+Kubeadm 1.29 introduced a new group `kubeadm:cluster-admins` bound to the `cluster-admin` role and separated the revocable admin kubeconfig `/etc/kubernetes/admin.conf` from the irrevocable break-glass super-admin kubeconfig `/etc/kubernetes/super-admin.conf`. This is by design and addresses the security concern of leaking the latter to external actors.
 
 See [Implementation details | Kubernetes](https://kubernetes.io/docs/reference/setup-tools/kubeadm/implementation-details/) for more details.
 
