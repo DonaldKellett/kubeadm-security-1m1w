@@ -103,6 +103,28 @@ ANSIBLE_CONFIG="${PWD}/ansible/ansible.cfg" \
     ansible-playbook "${PWD}/ansible/playbook.yaml"
 ```
 
+## Non-compliant CIS Kubernetes Benchmark v1.11 controls
+
+The following CIS Kubernetes Benchmark v1.11 controls are non-compliant at the time of writing \(2025-04-06\). There are currently no plans to ensure compliance for the listed controls due to the reasons below.
+
+### 4.3.1 Ensure that the kube-proxy metrics service is bound to localhost
+
+Cilium kube-proxy replacement is enabled so this control is not applicable to our setup.
+
+### 5.1.1 Ensure that the cluster-admin role is only used where required
+
+Kubeadm introduced a new group `kubeadm:cluster-admins` bound to the `cluster-admin` role and separated the revocable admin kubeconfig `/etc/kubernetes/admin.conf` from the irrevocable break-glass super-admin kubeconfig `/etc/kubernetes/super-admin.conf`. This is by design and addresses the security concern of leaking the latter to external actors.
+
+See [Implementation details | Kubernetes](https://kubernetes.io/docs/reference/setup-tools/kubeadm/implementation-details/) for more details.
+
+### 5.1.3 Minimize wildcard use in Roles and ClusterRoles
+
+Some default Roles and ClusterRoles created by kubeadm contain wildcards by necessity and is required for proper cluster operation.
+
+### 5.1.6 Ensure that Service Account Tokens are only mounted where necessary
+
+Many Cilium pods use a non-default service account with least-privilege RBAC permissions for managing Cilium custom resources vital to cluster networking. They interact with the Kubernetes API server regularly using the mounted service account token for authentication.
+
 ## License
 
 [Apache 2.0](./LICENSE)

@@ -5,12 +5,12 @@ metadata:
   name: dns-rule-recording
 spec:
   endpointSelector:
-    matchLabels:
-      k8s:io.kubernetes.pod.namespace: kube-system
-      k8s-app: kube-dns
-  ingress:
-    - fromEndpoints:
-        - matchLabels: {}
+    matchLabels: {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
       toPorts:
         - ports:
             - port: "53"
@@ -18,3 +18,5 @@ spec:
           rules:
             dns:
               - matchPattern: '*'
+    - toEntities:
+        - all

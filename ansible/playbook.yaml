@@ -218,39 +218,9 @@
         cat {{ temp_dir }}/encryption-config.yaml | \
             yq '(.resources[] | .providers[] | .aescbc.keys[] | select(.name == "secrets-encryption-key")).secret = "'$(head -c 32 /dev/urandom | base64 -w 0 -i -)'"' | \
             sudo tee /etc/kubernetes/enc/encryption-config.yaml
-    - name: Run kubeadm init phase control-plane all and perform CIS hardening on manifests
-      ansible.builtin.shell: |
-        sudo kubeadm init phase control-plane all \
-            --config {{ temp_dir }}/kubeadm-config.yaml
-        sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml | \
-            yq '(.spec.containers[] | select(.name == "kube-apiserver")).command += "--profiling=false"' | \
-            yq '(.spec.containers[] | select(.name == "kube-apiserver")).command += "--audit-policy-file=/etc/kubernetes/audit-policy.yaml"' | \
-            yq '(.spec.containers[] | select(.name == "kube-apiserver")).command += "--audit-log-path=/var/log/kubernetes/audit/audit.log"' | \
-            yq '(.spec.containers[] | select(.name == "kube-apiserver")).command += "--audit-log-maxage=30"' | \
-            yq '(.spec.containers[] | select(.name == "kube-apiserver")).command += "--audit-log-maxbackup=10"' | \
-            yq '(.spec.containers[] | select(.name == "kube-apiserver")).command += "--audit-log-maxsize=100"' | \
-            yq '(.spec.containers[] | select(.name == "kube-apiserver")).command += "--encryption-provider-config=/etc/kubernetes/enc/encryption-config.yaml"' | \
-            yq '(.spec.containers[] | select(.name == "kube-apiserver")).volumeMounts += ({"mountPath":"/etc/kubernetes/audit-policy.yaml","name":"audit","readOnly":true})' | \
-            yq '(.spec.containers[] | select(.name == "kube-apiserver")).volumeMounts += ({"mountPath":"/var/log/kubernetes/audit/","name":"audit-log","readOnly":false})' | \
-            yq '(.spec.containers[] | select(.name == "kube-apiserver")).volumeMounts += ({"mountPath":"/etc/kubernetes/enc/encryption-config.yaml","name":"encryption-config","readOnly":true})' | \
-            yq '.spec.volumes += ({"name":"audit","hostPath":{"path":"/etc/kubernetes/audit-policy.yaml","type":"File"}})' | \
-            yq '.spec.volumes += ({"name":"audit-log","hostPath":{"path":"/var/log/kubernetes/audit/","type":"DirectoryOrCreate"}})' | \
-            yq '.spec.volumes += ({"name":"encryption-config","hostPath":{"path":"/etc/kubernetes/enc/encryption-config.yaml","type":"File"}})' > \
-            {{ temp_dir }}/kube-apiserver.yaml
-        sudo cp {{ temp_dir }}/kube-apiserver.yaml /etc/kubernetes/manifests/kube-apiserver.yaml
-        sudo cat /etc/kubernetes/manifests/kube-controller-manager.yaml | \
-            yq '(.spec.containers[] | select(.name == "kube-controller-manager")).command += "--profiling=false"' > \
-            {{ temp_dir }}/kube-controller-manager.yaml
-        sudo cp {{ temp_dir }}/kube-controller-manager.yaml /etc/kubernetes/manifests/kube-controller-manager.yaml
-        sudo cat /etc/kubernetes/manifests/kube-scheduler.yaml | \
-            yq '(.spec.containers[] | select(.name == "kube-scheduler")).command += "--profiling=false"' > \
-            {{ temp_dir }}/kube-scheduler.yaml
-        sudo cp {{ temp_dir }}/kube-scheduler.yaml /etc/kubernetes/manifests/kube-scheduler.yaml
-    - name: Run kubeadm init (except phase "control-plane")
+    - name: Run kubeadm init
       ansible.builtin.shell: |
         sudo kubeadm init \
-            --skip-phases control-plane \
-            --ignore-preflight-errors=FileAvailable--etc-kubernetes-manifests-kube-apiserver.yaml,FileAvailable--etc-kubernetes-manifests-kube-controller-manager.yaml,FileAvailable--etc-kubernetes-manifests-kube-scheduler.yaml \
             --config {{ temp_dir }}/kubeadm-config.yaml | \
             sudo tee /var/log/kubeinit.log
     - name: Configure kubectl
@@ -286,6 +256,11 @@
         cilium install \
             -f {{ temp_dir }}/revised-cilium-values.yaml \
             --version 1.17.2
+    - name: Approve kubelet server CSRs
+      ansible.builtin.shell: |
+        for csr in $(kubectl get csr | grep Pending | awk '{ print $1 }'); do
+            kubectl certificate approve $csr
+        done
     - name: Wait for Cilium to become ready
       ansible.builtin.shell: |
         cilium status --wait
@@ -334,6 +309,14 @@
         sudo useradd -r -s /usr/sbin/nologin etcd
         sudo passwd -l etcd
         sudo chown -R etcd:etcd /var/lib/etcd/
+- name: Approve kubelet server CSRs again from master0
+  hosts: master0
+  tasks:
+    - name: Approve kubelet server CSRs again
+      ansible.builtin.shell: |
+        for csr in $(kubectl get csr | grep Pending | awk '{ print $1 }'); do
+            kubectl certificate approve $csr
+        done
 - name: Disable token auto-mount for default service accounts in all namespaces from master0
   hosts: master0
   tasks:
