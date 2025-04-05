@@ -1,0 +1,3 @@
+resources:
+  - gvisor-runtimeclass.yaml
+  - dns-rule-recording.yaml

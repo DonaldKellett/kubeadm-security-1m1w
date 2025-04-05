@@ -1,0 +1,16 @@
+gatewayAPI:
+  enabled: true
+hubble:
+  relay:
+    enabled: true
+  ui:
+    enabled: true
+ingressController:
+  default: true
+  enabled: true
+  loadbalancerMode: dedicated
+kubeProxyReplacement: true
+l2announcements:
+  enabled: true
+socketLB:
+  hostNamespaceOnly: true

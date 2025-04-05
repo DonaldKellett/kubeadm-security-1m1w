@@ -64,7 +64,9 @@
         sudo wget -qO /etc/systemd/system/containerd.service \
             https://raw.githubusercontent.com/containerd/containerd/refs/tags/v2.0.4/containerd.service
         sudo mkdir -p /etc/containerd/
-        containerd config default | sudo tee /etc/containerd/config.toml
+        containerd config default | \
+            sed '/\[plugins\.'\''io\.containerd\.cri\.v1\.runtime'\''.containerd\.runtimes\.runc\.options\]/a\ \ \ \ \ \ \ \ \ \ \ \ SystemdCgroup = true' |
+            sudo tee /etc/containerd/config.toml
         sudo systemctl daemon-reload
         sudo systemctl enable --now containerd.service
     - name: Install gVisor and configure runsc runtime for containerd
@@ -85,3 +87,189 @@
           runtime_type = 'io.containerd.runsc.v1'
         EOF
         sudo systemctl restart containerd.service
+    - name: Install kubeadm and kubelet v1.32.3
+      ansible.builtin.shell: |
+        sudo apt-get update
+        sudo apt-get install -y apt-transport-https ca-certificates curl gpg
+        curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.32/deb/Release.key | \
+            sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+        echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.32/deb/ /' | \
+            sudo tee /etc/apt/sources.list.d/kubernetes.list
+        sudo apt-get update
+        sudo apt-get install -y kubelet=1.32.3-1.1 kubeadm=1.32.3-1.1
+        sudo apt-mark hold kubelet kubeadm
+        sudo systemctl enable --now kubelet.service
+- name: Install command-line tools on master nodes
+  hosts: masters
+  tasks:
+    - name: Install and configure kubectl v1.32.3
+      ansible.builtin.shell: |
+        sudo apt-get update
+        sudo apt-get install -y kubectl=1.32.3-1.1
+        sudo apt-mark hold kubectl
+        echo "source <(kubectl completion bash)" >> $HOME/.bashrc
+    - name: Install jq
+      ansible.builtin.shell: |
+        sudo apt-get update
+        sudo apt-get install -y jq
+    - name: Install yq v4.45.1
+      ansible.builtin.shell: |
+        TMP_DIR=$(mktemp -d)
+        pushd $TMP_DIR
+        wget https://github.com/mikefarah/yq/releases/download/v4.45.1/yq_linux_amd64
+        chmod +x yq_linux_amd64
+        sudo mv yq_linux_amd64 /usr/local/bin/yq
+        popd
+        rm -rf $TMP_DIR
+    - name: Install and configure Cilium CLI v0.18.3
+      ansible.builtin.shell: |
+        TMP_DIR=$(mktemp -d)
+        pushd $TMP_DIR
+        wget https://github.com/cilium/cilium-cli/releases/download/v0.18.3/cilium-linux-amd64.tar.gz
+        tar xvf cilium-linux-amd64.tar.gz
+        sudo mv cilium /usr/local/bin/.
+        popd
+        rm -rf $TMP_DIR
+        echo "source <(cilium completion bash)" >> $HOME/.bashrc
+    - name: Install Hubble CLI v1.17.2
+      ansible.builtin.shell: |
+        TMP_DIR=$(mktemp -d)
+        pushd $TMP_DIR
+        wget https://github.com/cilium/hubble/releases/download/v1.17.2/hubble-linux-amd64.tar.gz
+        sudo tar xzvfC hubble-linux-amd64.tar.gz /usr/local/bin
+        popd
+        rm -rf $TMP_DIR
+        echo "source <(hubble completion bash)" >> $HOME/.bashrc
+    - name: Install Helm v3.17.2
+      ansible.builtin.shell: |
+        TMP_DIR=$(mktemp -d)
+        pushd $TMP_DIR
+        wget https://get.helm.sh/helm-v3.17.2-linux-amd64.tar.gz
+        tar xvf helm-v3.17.2-linux-amd64.tar.gz
+        chmod +x linux-amd64/helm
+        sudo mv linux-amd64/helm /usr/local/bin/.
+        popd
+        rm -rf $TMP_DIR
+        echo "source <(helm completion bash)" >> $HOME/.bashrc
+    - name: Install mkcert v1.4.4
+      ansible.builtin.shell: |
+        TMP_DIR=$(mktemp -d)
+        pushd $TMP_DIR
+        wget https://github.com/FiloSottile/mkcert/releases/download/v1.4.4/mkcert-v1.4.4-linux-amd64
+        chmod +x mkcert-v1.4.4-linux-amd64
+        sudo mv mkcert-v1.4.4-linux-amd64 /usr/local/bin/mkcert
+        popd
+        rm -rf $TMP_DIR
+    - name: Install kube-bench v0.10.4
+      ansible.builtin.shell: |
+        TMP_DIR=$(mktemp -d)
+        pushd $TMP_DIR
+        wget https://github.com/aquasecurity/kube-bench/releases/download/v0.10.4/kube-bench_0.10.4_linux_amd64.tar.gz
+        tar xvf kube-bench_0.10.4_linux_amd64.tar.gz
+        sudo mkdir -p /etc/kube-bench/cfg/
+        sudo cp -r cfg/. /etc/kube-bench/cfg/.
+        sudo mv kube-bench /usr/local/bin/
+        popd
+        rm -rf $TMP_DIR
+- name: Initialize the cluster on master0
+  hosts: master0
+  tasks:
+    - name: Create temp directory for configuration files
+      ansible.builtin.shell: |
+        mktemp -d
+      register: create_temp_dir
+    - name: Record the name of the temp directory
+      ansible.builtin.set_fact:
+        temp_dir: "{{ create_temp_dir.stdout }}"
+    - name: Copy cluster configuration to temp directory
+      ansible.builtin.copy:
+        src: ../config/cluster-config.yaml
+        dest: "{{ temp_dir }}/cluster-config.yaml"
+    - name: Copy kubelet configuration to temp directory
+      ansible.builtin.copy:
+        src: ../config/kubelet-config.yaml
+        dest: "{{ temp_dir }}/kubelet-config.yaml"
+    - name: Generate kubeadm config from cluster and kubelet configs
+      ansible.builtin.shell: |
+        cat {{ temp_dir }}/cluster-config.yaml | \
+            yq '.networking |= ({"serviceSubnet":"{{ service_cidr | default('10.96.0.0/16') }}","podSubnet":"{{ pod_cidr | default('10.244.0.0/24') }}"})' >> \
+            {{ temp_dir }}/kubeadm-config.yaml
+        cat {{ temp_dir }}/kubelet-config.yaml >> {{ temp_dir }}/kubeadm-config.yaml
+    - name: Run kubeadm init
+      ansible.builtin.shell: |
+        sudo kubeadm init --config {{ temp_dir }}/kubeadm-config.yaml | \
+            sudo tee /var/log/kubeinit.log
+    - name: Configure kubectl
+      ansible.builtin.shell: |
+        mkdir -p $HOME/.kube/
+        sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+        sudo chown $(id -u):$(id -g) $HOME/.kube/config
+    - name: Untaint all nodes
+      ansible.builtin.shell: |
+        kubectl taint nodes \
+            -l node-role.kubernetes.io/control-plane \
+            node-role.kubernetes.io/control-plane-
+- name: Install Cilium 1.17.2
+  hosts: master0
+  tasks:
+    - name: Install Gateway API v1.2.1 CRDs
+      ansible.builtin.shell: |
+        kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.1/config/crd/standard/gateway.networking.k8s.io_gatewayclasses.yaml
+        kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.1/config/crd/standard/gateway.networking.k8s.io_gateways.yaml
+        kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.1/config/crd/standard/gateway.networking.k8s.io_httproutes.yaml
+        kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.1/config/crd/standard/gateway.networking.k8s.io_referencegrants.yaml
+        kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.1/config/crd/standard/gateway.networking.k8s.io_grpcroutes.yaml
+        kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.1/config/crd/experimental/gateway.networking.k8s.io_tlsroutes.yaml
+    - name: Copy Cilium Helm chart values
+      ansible.builtin.copy:
+        src: ../config/cilium-values.yaml
+        dest: "{{ temp_dir }}/cilium-values.yaml"
+    - name: Install Cilium 1.17.2 with provided values
+      ansible.builtin.shell: |
+        cilium install \
+            -f {{ temp_dir }}/cilium-values.yaml \
+            --version 1.17.2
+    - name: Wait for Cilium to become ready
+      ansible.builtin.shell: |
+        cilium status --wait
+    - name: Wait for all nodes to become ready
+      ansible.builtin.shell: |
+        kubectl wait \
+            --for=condition=Ready \
+            nodes \
+            --all \
+            --timeout=300s
+- name: Join all worker nodes to the cluster
+  hosts: workers
+  tasks:
+    - name: Register the join command from master0
+      ansible.builtin.shell: |
+        sudo kubeadm token create --print-join-command
+      delegate_to: master0
+      register: print_join_command
+    - name: Record the join command
+      ansible.builtin.set_fact:
+        join_command: "{{ print_join_command.stdout }}"
+    - name: Run the join command as root
+      ansible.builtin.shell: |
+        sudo {{ join_command }}
+- name: Wait for all nodes to be ready from master0
+  hosts: master0
+  tasks:
+    - name: Wait for all nodes to be ready
+      ansible.builtin.shell: |
+        kubectl wait \
+            --for=condition=Ready \
+            nodes \
+            --all \
+            --timeout=300s
+- name: Apply cluster-wide manifests from master0
+  hosts: master0
+  tasks:
+    - name: Copy cluster-wide manifests
+      ansible.builtin.copy:
+        src: ../manifests/
+        dest: "{{ temp_dir }}/manifests/"
+    - name: Apply cluster-wide manifests
+      ansible.builtin.shell: |
+        kubectl apply -k {{ temp_dir }}/manifests/
