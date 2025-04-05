@@ -13,7 +13,7 @@ jobs:
       - name: Combine Kubernetes manifests into a single file
         run: cat manifests/{dns-rule-recording,gvisor-runtimeclass}.yaml > all-manifests.yaml
       - name: Run kubesec scanner
-        uses: controlplaneio/kubesec-action@master
+        uses: controlplaneio/kubesec-action@main
         with:
           input: all-manifests.yaml
           exit-code: "0"
