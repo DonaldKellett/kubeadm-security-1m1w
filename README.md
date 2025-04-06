@@ -9,7 +9,6 @@ Ansible should be installed.
 With one of the supported managed infrastructure providers below, OpenTofu should be installed as well:
 
 - Amazon Web Services \(AWS\)
-- Microsoft Azure \(Azure\)
 - Alibaba Cloud \(Aliyun\)
 
 With self-provisioned infrastructure, ensure you have SSH access to 2 nodes with the following specifications:
@@ -73,7 +72,7 @@ For the supported managed infrastructure providers above, you can provision the 
 Example:
 
 ```bash
-export CLOUD_PROVIDER="aws" # or "azure", "aliyun"
+export CLOUD_PROVIDER="aws" # or "aliyun"
 
 # Set provider-specific OpenTofu variables here
 # E.g. AWS: allow SSH access from 1.2.3.4/32 and 5.6.7.8/29
@@ -97,10 +96,6 @@ tofu -chdir="opentofu/$CLOUD_PROVIDER/" apply
 | `instance_type` | `string` | - | `"t3.large"` |
 | `sys_volume_size` | `number` | - | `64` |
 | `ssh_private_key_path` | `string` | - | `"~/.ssh/id_ed25519"` |
-
-#### OpenTofu variables for Azure
-
-TODO
 
 #### OpenTofu variables for Aliyun
 
