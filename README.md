@@ -6,9 +6,15 @@ Kubeadm cluster with 1 master, 1 worker and stringent security defaults
 
 Ansible should be installed.
 
-If using your own infrastructure, ensure you have SSH access to 2 nodes with the following specifications:
+With one of the supported managed infrastructure providers below, OpenTofu should be installed as well:
 
-- OS: Ubuntu 24.04 LTS \(Jammy\)
+- Amazon Web Services \(AWS\)
+- Microsoft Azure \(Azure\)
+- Alibaba Cloud \(Aliyun\)
+
+With self-provisioned infrastructure, ensure you have SSH access to 2 nodes with the following specifications:
+
+- OS: Ubuntu 24.04 LTS \(Noble\)
 - Architecture: `amd64`
 - vCPU: at least 2
 - Memory \(GiB\): at least 8
@@ -60,9 +66,50 @@ The following command-line utilities are installed on all master nodes.
 
 Clone the repository and make it your working directory.
 
+### Provision the infrastructure
+
+For the supported managed infrastructure providers above, you can provision the infrastructure automatically with OpenTofu; otherwise, you must manually provision the infrastructure.
+
+Example:
+
+```bash
+export CLOUD_PROVIDER="aws" # or "azure", "aliyun"
+
+# Set provider-specific OpenTofu variables here
+# E.g. AWS: allow SSH access from 1.2.3.4/32 and 5.6.7.8/29
+#export TF_VAR_trusted_cidr_blocks='["1.2.3.4/32","5.6.7.8/29"]'
+# ...
+
+tofu -chdir="opentofu/$CLOUD_PROVIDER/" init
+tofu -chdir="opentofu/$CLOUD_PROVIDER/" plan
+tofu -chdir="opentofu/$CLOUD_PROVIDER/" apply
+```
+
+#### OpenTofu variables for AWS
+
+| Name | Type | Required | Default |
+| --- | --- | --- | --- |
+| `trusted_cidr_blocks` | `list(string)` | Y | - |
+| `region` | `string` | - | `"ap-east-1"` |
+| `vpc_cidr` | `string` | - | `"10.0.0.0/16"` |
+| `subnet_cidr` | `string` | - | `"10.0.0.0/24"` |
+| `ssh_public_key_path` | `string` | - | `"~/.ssh/id_ed25519.pub"` |
+| `instance_type` | `string` | - | `"t3.large"` |
+| `sys_volume_size` | `number` | - | `64` |
+
+#### OpenTofu variables for Azure
+
+TODO
+
+#### OpenTofu variables for Aliyun
+
+TODO
+
 ### Ansible configuration
 
-Sample Ansible configuration file `ansible/ansible.cfg`:
+The Ansible configuration file `ansible/ansible.cfg` is auto-generated with the supported managed infrastructure providers above; otherwise, you must provide your own.
+
+Example:
 
 ```ini
 [defaults]
@@ -74,7 +121,9 @@ host_key_checking = False
 
 ### Ansible inventory
 
-Sample Ansible inventory file `ansible/hosts.yaml`:
+The Ansible inventory file `ansible/hosts.yaml` is auto-generated with the supported managed infrastructure providers above; otherwise, you must provide your own.
+
+Example:
 
 ```yaml
 masters:
