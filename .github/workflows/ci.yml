@@ -12,14 +12,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Combine Kubernetes manifests into a single file
         run: |
-          cat manifests/{allow-all-dns-ingress,\
-              allow-apiserver-ingress,\
-              cilium-health-checks,\
-              cilium-ingress,\
-              coredns-egress,\
-              gvisor-runtimeclass,\
-              hubble-relay-egress,\
-              intercept-all-dns-egress}.yaml > all-manifests.yaml
+          cat manifests/{allow-all-dns-ingress,allow-apiserver-ingress,cilium-health-checks,cilium-ingress,coredns-egress,gvisor-runtimeclass,hubble-relay-egress,intercept-all-dns-egress}.yaml > all-manifests.yaml
       - name: Run kubesec scanner
         uses: controlplaneio/kubesec-action@main
         with:
