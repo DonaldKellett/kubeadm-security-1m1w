@@ -16,5 +16,6 @@ ingressController:
 kubeProxyReplacement: true
 l2announcements:
   enabled: true
+policyEnforcementMode: always
 socketLB:
   hostNamespaceOnly: true

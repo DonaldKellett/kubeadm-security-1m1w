@@ -269,16 +269,6 @@
         for csr in $(kubectl get csr | grep Pending | awk '{ print $1 }'); do
             kubectl certificate approve $csr
         done
-    - name: Wait for Cilium to become ready
-      ansible.builtin.shell: |
-        cilium status --wait
-    - name: Wait for all nodes to become ready
-      ansible.builtin.shell: |
-        kubectl wait \
-            --for=condition=Ready \
-            nodes \
-            --all \
-            --timeout=300s
 - name: Join all worker nodes to the cluster
   hosts: workers
   tasks:
@@ -293,16 +283,6 @@
     - name: Run the join command as root
       ansible.builtin.shell: |
         sudo {{ join_command }}
-- name: Wait for all nodes to be ready from master0
-  hosts: master0
-  tasks:
-    - name: Wait for all nodes to be ready
-      ansible.builtin.shell: |
-        kubectl wait \
-            --for=condition=Ready \
-            nodes \
-            --all \
-            --timeout=300s
 - name: Apply additional hardening to kubelet
   hosts: masters:workers
   tasks:
@@ -335,9 +315,16 @@
                 --type=merge \
                 -p '{"automountServiceAccountToken":false}'
         done
-- name: Apply cluster-wide manifests from master0
+- name: Apply cluster-wide manifests and wait for cluster to be ready from master0
   hosts: master0
   tasks:
+    - name: Wait for all nodes to become ready
+      ansible.builtin.shell: |
+        kubectl wait \
+            --for=condition=Ready \
+            nodes \
+            --all \
+            --timeout=300s
     - name: Copy cluster-wide manifests
       ansible.builtin.copy:
         src: ../manifests/
@@ -345,3 +332,6 @@
     - name: Apply cluster-wide manifests
       ansible.builtin.shell: |
         kubectl apply -k {{ temp_dir }}/manifests/
+    - name: Wait for Cilium to become ready
+      ansible.builtin.shell: |
+        cilium status --wait

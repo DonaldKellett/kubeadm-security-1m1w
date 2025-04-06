@@ -1,3 +1,9 @@
 resources:
+  - allow-all-dns-ingress.yaml
+  - allow-apiserver-ingress.yaml
+  - cilium-health-checks.yaml
+  - cilium-ingress.yaml
+  - coredns-egress.yaml
   - gvisor-runtimeclass.yaml
-  - dns-rule-recording.yaml
+  - hubble-relay-egress.yaml
+  - intercept-all-dns-egress.yaml

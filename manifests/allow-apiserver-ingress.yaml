@@ -2,21 +2,17 @@
 apiVersion: cilium.io/v2
 kind: CiliumClusterwideNetworkPolicy
 metadata:
-  name: dns-rule-recording
+  name: allow-apiserver-ingress
 spec:
   endpointSelector:
-    matchLabels: {}
-  egress:
-    - toEndpoints:
+    matchLabels:
+      'reserved:kube-apiserver': ''
+  ingress:
+    - fromEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: kube-system
             k8s-app: kube-dns
       toPorts:
         - ports:
-            - port: "53"
-              protocol: UDP
-          rules:
-            dns:
-              - matchPattern: '*'
-    - toEntities:
-        - all
+            - port: "6443"
+              protocol: TCP
