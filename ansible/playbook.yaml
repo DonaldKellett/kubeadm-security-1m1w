@@ -203,6 +203,10 @@
       ansible.builtin.copy:
         src: ../config/encryption-config.yaml
         dest: "{{ temp_dir }}/encryption-config.yaml"
+    - name: Copy Pod Security admission configuration to temp directory
+      ansible.builtin.copy:
+        src: ../config/pss-config.yaml
+        dest: "{{ temp_dir }}/pss-config.yaml"
     - name: Generate kubeadm config from cluster and kubelet configs
       ansible.builtin.shell: |
         cat {{ temp_dir }}/cluster-config.yaml | \
@@ -218,6 +222,10 @@
         cat {{ temp_dir }}/encryption-config.yaml | \
             yq '(.resources[] | .providers[] | .aescbc.keys[] | select(.name == "secrets-encryption-key")).secret = "'$(head -c 32 /dev/urandom | base64 -w 0 -i -)'"' | \
             sudo tee /etc/kubernetes/enc/encryption-config.yaml
+    - name: Copy Pod Security admission configuration to /etc/kubernetes/pss/
+      ansible.builtin.shell: |
+        sudo mkdir -p /etc/kubernetes/pss/
+        sudo cp {{ temp_dir }}/pss-config.yaml /etc/kubernetes/pss/pss-config.yaml
     - name: Run kubeadm init
       ansible.builtin.shell: |
         sudo kubeadm init \
