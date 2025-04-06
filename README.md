@@ -96,6 +96,7 @@ tofu -chdir="opentofu/$CLOUD_PROVIDER/" apply
 | `ssh_public_key_path` | `string` | - | `"~/.ssh/id_ed25519.pub"` |
 | `instance_type` | `string` | - | `"t3.large"` |
 | `sys_volume_size` | `number` | - | `64` |
+| `ssh_private_key_path` | `string` | - | `"~/.ssh/id_ed25519"` |
 
 #### OpenTofu variables for Azure
 
@@ -103,7 +104,18 @@ TODO
 
 #### OpenTofu variables for Aliyun
 
-TODO
+| Name | Type | Required | Default |
+| --- | --- | --- | --- |
+| `access_key` | `string` | Y | - |
+| `secret_key` | `string` | Y | - |
+| `trusted_cidr_block` | `string` | Y | - |
+| `region` | `string` | - | `"cn-hongkong"` |
+| `vpc_cidr` | `string` | - | `"10.0.0.0/16"` |
+| `vswitch_cidr` | `string` | - | `"10.0.0.0/24"` |
+| `ssh_public_key_path` | `string` | - | `"~/.ssh/id_ed25519.pub"` |
+| `instance_type` | `string` | - | `"ecs.g8i.large"` |
+| `system_disk_size` | `number` | - | `64` |
+| `ssh_private_key_path` | `string` | - | `"~/.ssh/id_ed25519"` |
 
 ### Ansible configuration
 

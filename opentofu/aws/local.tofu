@@ -3,7 +3,7 @@ resource "local_file" "kubeadm-security-1m1w-ansible-config" {
 [defaults]
 inventory = ./hosts.yaml
 remote_user = ubuntu
-private_key_file = ${pathexpand(var.ssh_public_key_path)}
+private_key_file = ${pathexpand(var.ssh_private_key_path)}
 host_key_checking = False
 EOT
   filename        = "${path.module}/../../ansible/ansible.cfg"

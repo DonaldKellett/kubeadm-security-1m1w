@@ -1,10 +1,18 @@
-variable "trusted_cidr_blocks" {
-  type = list(string)
+variable "access_key" {
+  type = string
+}
+
+variable "secret_key" {
+  type = string
+}
+
+variable "trusted_cidr_block" {
+  type = string
 }
 
 variable "region" {
   type    = string
-  default = "ap-east-1"
+  default = "cn-hongkong"
 }
 
 variable "vpc_cidr" {
@@ -12,7 +20,7 @@ variable "vpc_cidr" {
   default = "10.0.0.0/16"
 }
 
-variable "subnet_cidr" {
+variable "vswitch_cidr" {
   type    = string
   default = "10.0.0.0/24"
 }
@@ -24,10 +32,10 @@ variable "ssh_public_key_path" {
 
 variable "instance_type" {
   type    = string
-  default = "t3.large"
+  default = "ecs.g8i.large"
 }
 
-variable "sys_volume_size" {
+variable "system_disk_size" {
   type    = number
   default = 64
 }

@@ -38,3 +38,19 @@ jobs:
       - name: Validate OpenTofu configuration
         run: |
           tofu -chdir="opentofu/aws/" validate
+  opentofu-aliyun:
+    runs-on: ubuntu-latest
+    steps:
+      - name: OpenTofu - Setup Tofu
+        uses: opentofu/setup-opentofu@v1
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Initialize OpenTofu without backend
+        run: |
+          tofu -chdir="opentofu/aliyun/" init -backend=false
+      - name: Check OpenTofu formatting
+        run: |
+          tofu -chdir="opentofu/aliyun/" fmt -recursive -check
+      - name: Validate OpenTofu configuration
+        run: |
+          tofu -chdir="opentofu/aliyun/" validate
